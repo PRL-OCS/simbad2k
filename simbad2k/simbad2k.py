@@ -6,6 +6,31 @@ from logging.config import dictConfig
 import math
 import os
 import requests
+from dotenv import load_dotenv
+
+load_dotenv()
+
+def get_astroquery_proxies():
+    """
+    Retrieve proxy settings from environment variables.
+    Specifically looks for ASTROQUERY_HTTP_PROXY and ASTROQUERY_HTTPS_PROXY.
+    """
+    proxies = {}
+    http_proxy = os.environ.get('ASTROQUERY_HTTP_PROXY')
+    https_proxy = os.environ.get('ASTROQUERY_HTTPS_PROXY')
+    if http_proxy:
+        proxies['http'] = http_proxy
+    if https_proxy:
+        proxies['https'] = https_proxy
+    return proxies
+
+def apply_proxies_to_session(session):
+    """
+    Inject proxy settings into a requests.Session object if they are defined.
+    """
+    proxies = get_astroquery_proxies()
+    if proxies:
+        session.proxies.update(proxies)
 
 from astroquery.exceptions import RemoteServiceError
 from flask import Flask, jsonify, request
@@ -65,6 +90,7 @@ class SimbadQuery(object):
         # The imported `Simbad` is already an instance of the `SimbadClass`, but we need to create a new instance
         # of it so that we only add the votable fields once
         simbad = Simbad()
+        apply_proxies_to_session(simbad._session)
         simbad.add_votable_fields('pmra', 'pmdec', 'ra', 'dec', 'plx_value', 'main_id')
         return simbad
 
@@ -145,8 +171,10 @@ class MPCQuery(object):
             * Return the first target with a 'permid' if searching for a comet.
             * If no 'permid' is found, query the MPC again using the first target with a preliminary designation.
         """
+        proxies = get_astroquery_proxies()
         response = requests.get("https://data.minorplanetcenter.net/api/query-identifier",
-                                data=self.query.replace("+", " ").upper())
+                                data=self.query.replace("+", " ").upper(),
+                                proxies=proxies)
         identifications = response.json()
         if identifications.get('object_type') and\
                 identifications.get('object_type')[1] not in self.mpc_type_mapping[self.scheme]:
@@ -180,6 +208,7 @@ class MPCQuery(object):
 
     def get_result(self):
         from astroquery.mpc import MPC
+        apply_proxies_to_session(MPC._session)
         schemes = []
         if self.scheme in self.scheme_mapping:
             schemes.append(self.scheme)
@@ -246,6 +275,7 @@ class NEDQuery(object):
 
     def get_result(self):
         from astroquery.ipac.ned import Ned
+        apply_proxies_to_session(Ned._session)
         ret_dict = {}
         try:
             result_table = Ned.query_object(self.query)

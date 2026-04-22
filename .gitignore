@@ -3,7 +3,7 @@ tags
 
 # Venv files
 .venv
-
+*.env
 # VIM swap files
 *.swp
 *.swo

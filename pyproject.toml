@@ -30,7 +30,8 @@ dependencies = [
     "Flask-Cors >=3.0,<=3.1",
     "lcogt-logging >=0.3,<0.4",
     "MarkupSafe ==2.0.1",
-    "gunicorn[gevent] ==19.9.0"
+    "gunicorn[gevent] ==19.9.0",
+    "python-dotenv >=1.0.0"
 ]
 
 #[tool.poetry.dependencies]

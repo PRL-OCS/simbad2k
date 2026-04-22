@@ -1,0 +1,12 @@
+services:
+  simbad2k:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    container_name: simbad2k
+    ports:
+      - "5000:5000"
+    environment:
+      - PYTHONUNBUFFERED=1
+      - PYTHONFAULTHANDLER=1
+    restart: unless-stopped
