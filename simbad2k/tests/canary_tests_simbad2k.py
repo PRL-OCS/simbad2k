@@ -173,6 +173,22 @@ class TestMPC:
         mpc_response = client.get(f'/{urllib.parse.quote_plus(query)}?target_type=non_sidereal&scheme={scheme}').json
         assert mpc_response['error'] == 'No match found'
 
+class TestJPL:
+    def test_jpl_moon(self, client):
+        query  = '502'
+        scheme = 'jpl_major_planet'
+        jpl_response = client.get(f'/{query}?target_type=non_sidereal&scheme={scheme}').json
+        assert 'Europa' in jpl_response.get('name', '')
+        assert 'semimajor_axis' in jpl_response
+        assert 'eccentricity' in jpl_response
+
+    def test_jpl_minor_planet(self, client):
+        query  = 'Ceres'
+        scheme = 'jpl_minor_planet'
+        jpl_response = client.get(f'/{query}?target_type=non_sidereal&scheme={scheme}').json
+        assert 'Ceres' in jpl_response.get('name', '')
+        assert 'perihelion_distance' in jpl_response
+
 
 class TestNED:
     def test_ned_target(self, client):

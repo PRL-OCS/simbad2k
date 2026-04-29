@@ -207,13 +207,11 @@ class MPCQuery(object):
         return identifications['permid'], identifications['unpacked_primary_provisional_designation']
 
     def get_result(self):
+        if self.scheme not in self.scheme_mapping:
+            return None
         from astroquery.mpc import MPC
         apply_proxies_to_session(MPC._session)
-        schemes = []
-        if self.scheme in self.scheme_mapping:
-            schemes.append(self.scheme)
-        else:
-            schemes = [*self.scheme_mapping]
+        schemes = [self.scheme]
         # Get the primary designation of the object and preferred provisional designation if available
         primary_designation, primary_provisional_designation = self.get_primary_designation()
         for scheme in schemes:
@@ -262,10 +260,67 @@ class MPCQuery(object):
                             recent_time_diff = math.fabs(
                                 (datetime.strptime(recent['epoch'].rstrip('0').rstrip('.'), '%Y-%m-%d') - now).days
                             )
-                return self._clean_result(recent)
-            if result:
-                return self._clean_result(result[0])
+                ret = self._clean_result(recent)
+            elif result:
+                ret = self._clean_result(result[0])
+            else:
+                continue
+            try:
+                eph = MPC.get_ephemeris(str(designation))
+                if eph is not None and len(eph) > 0:
+                    # Add tracking rates calculated from Proper Motion and Direction
+                    pa_rad = math.radians(float(eph['Direction'][0]))
+                    pm = float(eph['Proper motion'][0])
+                    ret['ephemeris_ra_rate'] = pm * math.sin(pa_rad)
+                    ret['ephemeris_dec_rate'] = pm * math.cos(pa_rad)
+            except Exception as e:
+                logger.error(f"MPC ephemeris query failed for {designation}: {e}")
+            return ret
         return None
+
+
+class JPLQuery(object):
+    def __init__(self, query, scheme):
+        self.query = query
+        self.scheme = scheme
+        self.scheme_mapping = {'jpl_minor_planet': None, 'jpl_major_planet': None}
+
+    def get_result(self):
+        if self.scheme not in self.scheme_mapping:
+            return None
+        from astroquery.jplhorizons import Horizons
+        try:
+            # `id_type` is deprecated in newer astroquery versions, replaced by `None`
+            obj = Horizons(id=self.query, location='@sun', id_type=None)
+            el = obj.elements()
+            if not el or len(el) == 0:
+                return None
+            result = el[0]
+            cleaned_result = {
+                'name': result['targetname'] if 'targetname' in el.colnames else self.query,
+                'epoch_jd': float(result['datetime_jd']),
+                'eccentricity': float(result['e']),
+                'perihelion_distance': float(result['q']),
+                'inclination': float(result['incl']),
+                'ascending_node': float(result['Omega']),
+                'argument_of_perihelion': float(result['w']),
+                'perihelion_date_jd': float(result['Tp_jd']),
+                'mean_daily_motion': float(result['n']),
+                'mean_anomaly': float(result['M']),
+                'semimajor_axis': float(result['a']),
+            }
+            try:
+                eph_obj = Horizons(id=self.query, location='500@399', id_type=None)
+                eph = eph_obj.ephemerides()
+                if eph is not None and len(eph) > 0:
+                    cleaned_result['ephemeris_ra_rate'] = float(eph['RA_rate'][0])
+                    cleaned_result['ephemeris_dec_rate'] = float(eph['DEC_rate'][0])
+            except Exception as e:
+                logger.error(f"JPL Horizons ephemeris query failed for {self.query}: {e}")
+            return cleaned_result
+        except Exception as e:
+            logger.error(f"JPL Horizons query failed: {e}")
+            return None
 
 
 class NEDQuery(object):
@@ -290,7 +345,7 @@ class NEDQuery(object):
 
 
 SIDEREAL_QUERY_CLASSES = [SimbadQuery, NEDQuery]
-NON_SIDEREAL_QUERY_CLASSES = [PlanetQuery, MPCQuery]
+NON_SIDEREAL_QUERY_CLASSES = [PlanetQuery, MPCQuery, JPLQuery]
 QUERY_CLASSES_BY_TARGET_TYPE = {'sidereal': SIDEREAL_QUERY_CLASSES, 'non_sidereal': NON_SIDEREAL_QUERY_CLASSES}
 
 
@@ -335,7 +390,7 @@ def index():
     instructions = ('This is simbad2k. To query for a sidereal object, use '
                     '/&lt;object&gt;?target_type=&lt;sidereal or non_sidereal&gt;. '
                     'For non_sidereal targets, you must include scheme, which can be '
-                    'either mpc_minor_planet or mpc_comet.'
+                    'mpc_minor_planet, mpc_comet, jpl_major_planet, or jpl_minor_planet. '
                     'Ex: <a href="/103P?target_type=non_sidereal&scheme=mpc_comet">'
                     '/103P?target_type=non_sidereal&scheme=mpc_comet</a>')
     return instructions
