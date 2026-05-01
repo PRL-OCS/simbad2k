@@ -289,6 +289,7 @@ class JPLQuery(object):
         if self.scheme not in self.scheme_mapping:
             return None
         from astroquery.jplhorizons import Horizons
+        apply_proxies_to_session(Horizons._session)
         try:
             # `id_type` is deprecated in newer astroquery versions, replaced by `None`
             obj = Horizons(id=self.query, location='@sun', id_type=None)
